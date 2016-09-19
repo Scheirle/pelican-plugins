@@ -101,6 +101,20 @@ def warn_on_slug_collision(items):
                 logger.warning('    %s', x.source_path)
 
 
+def write_empty_feed(gen, context, date, path):
+    feed = _pelican_writer.write_feed([], context, path)
+    # Monkey patch the feed to return a static date
+    feed.__dict__['latest_post_date'] = lambda: date
+
+    complete_path = os.path.join(_pelican_writer.output_path, path)
+    try:
+        os.makedirs(os.path.dirname(complete_path))
+    except Exception:
+        pass
+    with open(complete_path, 'w', encoding='utf-8') as fp:
+        feed.write(fp,'utf-8')
+
+
 def write_feed_all(gen, writer):
     if gen.settings['PELICAN_COMMENT_SYSTEM'] is not True:
         return
@@ -123,12 +137,15 @@ def write_feed_all(gen, writer):
     writer.write_feed(_all_comments, context, path)
 
 
-def write_feed(gen, items, context, slug):
+def write_feed(gen, items, context, content):
     if gen.settings['PELICAN_COMMENT_SYSTEM_FEED'] is None:
         return
 
-    path = gen.settings['PELICAN_COMMENT_SYSTEM_FEED'] % slug
-    _pelican_writer.write_feed(items, context, path)
+    path = gen.settings['PELICAN_COMMENT_SYSTEM_FEED'] % content.slug
+    if len(items) == 0:
+        write_empty_feed(gen, context, content.date, path)
+    else:
+        _pelican_writer.write_feed(items, context, path)
 
 
 def process_comments(article_generator):
@@ -164,7 +181,7 @@ def add_static_comments(gen, content):
 
     if not os.path.isdir(folder):
         logger.debug("No comments found for: %s", content.slug)
-        write_feed(gen, [], context, content.slug)
+        write_feed(gen, [], context, content)
         return
 
     reader = Readers(gen.settings)
@@ -190,7 +207,7 @@ def add_static_comments(gen, content):
     feed_items.reverse()
     warn_on_slug_collision(feed_items)
 
-    write_feed(gen, feed_items, context, content.slug)
+    write_feed(gen, feed_items, context, content)
 
     # TODO: Fix this O(n²) loop
     for reply in replies:
